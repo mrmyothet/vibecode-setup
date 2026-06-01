@@ -1,0 +1,4 @@
+# never commit a real key file
+vibe-key.env
+*.env
+!vibe-key.env.example
