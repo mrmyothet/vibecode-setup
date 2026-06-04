@@ -44,6 +44,32 @@ if [ "$OS" = "unknown" ]; then
 fi
 APT=0; [ "$OS" = "linux" ] && have apt && APT=1
 
+# ---------- end-of-run debug summary (success OR failure) ----------
+# Printed via EXIT trap so it always fires — students paste this into
+# #setup-help when something breaks. No secrets here.
+diag() {
+  rc=$?
+  distro="?"; [ -r /etc/os-release ] && distro="$( . /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-?}" )"
+  cb="$(command -v claude 2>/dev/null || true)"
+  printf '\n\033[1;36m──────── setup debug (copy/paste into #setup-help) ────────\033[0m\n'
+  [ "$rc" -eq 0 ] && echo "result  : SUCCESS" || echo "result  : FAILED (exit $rc)"
+  echo "date    : $(date -u +%FT%TZ 2>/dev/null || true)"
+  echo "os      : $(uname -s 2>/dev/null) $(uname -r 2>/dev/null)"
+  echo "arch    : $(uname -m 2>/dev/null)"
+  echo "distro  : $distro"
+  echo "wsl     : $([ "${IS_WSL:-0}" = 1 ] && echo yes || echo no)"
+  echo "shell   : ${SHELL:-?}"
+  echo "node    : $(node --version 2>/dev/null || echo -)"
+  echo "npm     : $(npm --version 2>/dev/null || echo -)"
+  echo "python  : $(python3 --version 2>/dev/null || echo -)"
+  echo "uv      : $(uv --version 2>/dev/null || echo -)"
+  echo "git     : $(git --version 2>/dev/null || echo -)"
+  echo "claude  : $(claude --version 2>/dev/null | head -1 || echo -)${cb:+  [$cb]}"
+  echo "opencode: $(opencode --version 2>/dev/null | head -1 || echo -)"
+  printf '\033[1;36m───────────────────────────────────────────────────────────\033[0m\n'
+}
+trap diag EXIT
+
 # ---------- 1. Node via nvm ----------
 say "1/5  Node.js (nvm + Node 22 LTS)"
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"

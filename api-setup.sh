@@ -36,6 +36,31 @@ case "$SELF" in
   *)                              SELF_CMD="bash $SELF" ;;
 esac
 
+# ---------- end-of-run debug summary (success OR failure; NO secrets) ----------
+# Printed via EXIT trap (only when run, not sourced). Students paste this into
+# #setup-help. Key + proxy URL are intentionally hidden — shown only as set/unset.
+diag() {
+  rc=$?
+  distro="?"; [ -r /etc/os-release ] && distro="$( . /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-?}" )"
+  iswsl=no; grep -qiE "microsoft|wsl" /proc/version 2>/dev/null && iswsl=yes || true
+  printf '\n\033[1;36m──────── api-setup debug (paste into #setup-help) ────────\033[0m\n'
+  [ "$rc" -eq 0 ] && echo "result    : SUCCESS" || echo "result    : FAILED (exit $rc)"
+  echo "date      : $(date -u +%FT%TZ 2>/dev/null || true)"
+  echo "os        : $(uname -s 2>/dev/null) $(uname -r 2>/dev/null)"
+  echo "arch      : $(uname -m 2>/dev/null)"
+  echo "distro    : $distro"
+  echo "wsl       : $iswsl"
+  echo "shell     : ${SHELL:-?}"
+  echo "node      : $(node --version 2>/dev/null || echo -)"
+  echo "claude    : $(claude --version 2>/dev/null | head -1 || echo -)"
+  echo "opencode  : $(opencode --version 2>/dev/null | head -1 || echo -)"
+  echo "claude cfg: ${CLAUDE_DIR:-<not resolved>} (kind=${CLAUDE_KIND:-?})"
+  echo "proxy     : $([ -n "${PROXY:-}" ] && echo configured || echo unset)   # URL hidden"
+  echo "key       : $([ -n "${KEY:-}" ] && echo configured || echo unset)   # value hidden"
+  printf '\033[1;36m──────────────────────────────────────────────────────────\033[0m\n'
+}
+[ "$SOURCED" = 0 ] && trap diag EXIT
+
 # ---------- detect Claude install: nix (Linux/macOS) | windows (via WSL) ----------
 # Sets: CLAUDE_KIND, CLAUDE_DIR (holds settings.json/.credentials.json),
 #       CLAUDE_JSON (the .claude.json login/config file).
