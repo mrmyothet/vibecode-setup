@@ -303,27 +303,47 @@ $MS
 $ME
 EOF
 
-# 4. opencode config file (env alone is unreliable for opencode)
+# 4. opencode config — model list pulled LIVE from the proxy so adding a model on
+#    the gateway needs NO change here: re-run this script and it appears. Single
+#    source of truth = config.yaml -> GET /v1/models. Static fallback if offline.
 OC="$HOME/.config/opencode"; mkdir -p "$OC"
-cat > "$OC/opencode.json" <<OCJSON
+MODELS_JSON="$(curl -s --max-time 10 "$PROXY/v1/models" -H "Authorization: Bearer $KEY" 2>/dev/null || true)"
+DISCOVERED=""
+if have node; then
+  DISCOVERED="$(OC_OUT="$OC/opencode.json" VIBE_PROXY_V="$PROXY" VIBE_KEY_V="$KEY" MODELS_JSON="$MODELS_JSON" node -e '
+    const fs=require("fs");
+    const proxy=process.env.VIBE_PROXY_V, key=process.env.VIBE_KEY_V;
+    // internal alias remaps (gpt-*/claude-*/o1*) are not user-facing models
+    const isAlias=id=>/^(gpt-|claude-[0-9]|claude-(haiku|sonnet|opus)|o1$|o1-|chatgpt|text-)/i.test(id);
+    let ids=[];
+    try{ ids=(JSON.parse(process.env.MODELS_JSON||"{}").data||[]).map(m=>m.id).filter(Boolean).filter(x=>!isAlias(x)); }catch(e){}
+    if(!ids.length) ids=["mimo-v2.5","mimo-v2.5-pro","deepseek-flash"]; // offline fallback
+    const LABEL={"mimo-v2.5":"MiMo v2.5 (fast)","mimo-v2.5-pro":"MiMo v2.5 Pro (reasoning)","deepseek-flash":"DeepSeek V4 Flash","deepseek-pro":"DeepSeek V4 Pro (reasoning)"};
+    const models={}; for(const id of ids) models[id]={name:LABEL[id]||id};
+    const def = ids.includes("mimo-v2.5") ? "mimo-v2.5" : ids[0];
+    const cfg={"$schema":"https://opencode.ai/config.json",
+      provider:{vibe:{npm:"@ai-sdk/openai-compatible",name:"Vibe Code Tours",
+        options:{baseURL:proxy+"/v1",apiKey:key}, models}},
+      model:"vibe/"+def};
+    fs.writeFileSync(process.env.OC_OUT, JSON.stringify(cfg,null,2));
+    process.stdout.write(ids.join(" "));
+  ' 2>/dev/null || true)"
+fi
+if [ ! -f "$OC/opencode.json" ]; then
+  # node missing or generation failed — write a minimal static config
+  cat > "$OC/opencode.json" <<OCJSON
 {
   "\$schema": "https://opencode.ai/config.json",
-  "provider": {
-    "vibe": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Vibe Code Tours",
-      "options": { "baseURL": "$PROXY/v1", "apiKey": "$KEY" },
-      "models": {
-        "mimo-v2.5": { "name": "MiMo v2.5 (fast)" },
-        "mimo-v2.5-pro": { "name": "MiMo v2.5 Pro (reasoning)" },
-        "deepseek-flash": { "name": "DeepSeek Flash (backup)" }
-      }
-    }
-  },
+  "provider": { "vibe": { "npm": "@ai-sdk/openai-compatible", "name": "Vibe Code Tours",
+    "options": { "baseURL": "$PROXY/v1", "apiKey": "$KEY" },
+    "models": { "mimo-v2.5": { "name": "MiMo v2.5 (fast)" }, "mimo-v2.5-pro": { "name": "MiMo v2.5 Pro (reasoning)" }, "deepseek-flash": { "name": "DeepSeek V4 Flash" } } } },
   "model": "vibe/mimo-v2.5"
 }
 OCJSON
+  DISCOVERED="mimo-v2.5 mimo-v2.5-pro deepseek-flash"
+fi
 echo "opencode config -> $OC/opencode.json"
+[ -n "$DISCOVERED" ] && echo "  models: $DISCOVERED"
 
 # 5. live test (Anthropic /v1/messages — what Claude Code calls)
 echo ""; echo "Testing key ..."
@@ -343,8 +363,8 @@ echo ""
 echo "Done."
 echo "  Claude settings : $SF"
 echo "  Shell profile   : $PROFILE"
-echo "Models: mimo-v2.5 (fast) · mimo-v2.5-pro (reasoning) · deepseek-flash"
-echo "Switch: Claude Code  /model mimo-v2.5-pro   ·   opencode  --model vibe/mimo-v2.5-pro"
+echo "Models: ${DISCOVERED:-mimo-v2.5 mimo-v2.5-pro deepseek-flash}"
+echo "Switch: Claude Code  /model <name>   ·   opencode  --model vibe/<name>"
 echo "Restore previous Claude config:  $SELF_CMD --restore"
 echo ""
 if [ "$SOURCED" = "1" ]; then
