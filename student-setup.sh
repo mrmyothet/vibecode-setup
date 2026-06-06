@@ -8,7 +8,7 @@
 #   bash student-setup.sh
 #
 # Idempotent — safe to re-run. Installs: nvm+Node 22 LTS, uv+Python 3.12
-# (project pin via .python-version), git, GitHub CLI (gh), Claude Code,
+# (project pin via .python-version), git, GitHub CLI (gh), librsvg (PNG badge), Claude Code,
 # opencode CLI. Then verifies. System Python 3.12-3.14 all accepted by verify.
 # No repo clone required.
 #
@@ -66,6 +66,7 @@ diag() {
   echo "uv      : $(uv --version 2>/dev/null || echo -)"
   echo "git     : $(git --version 2>/dev/null || echo -)"
   echo "gh      : $(gh --version 2>/dev/null | head -1 || echo -)"
+  echo "rsvg    : $(command -v rsvg-convert 2>/dev/null || command -v convert 2>/dev/null || echo -)"
   echo "claude  : $(claude --version 2>/dev/null | head -1 || echo -)${cb:+  [$cb]}"
   echo "opencode: $(opencode --version 2>/dev/null | head -1 || echo -)"
   printf '\033[1;36m───────────────────────────────────────────────────────────\033[0m\n'
@@ -113,7 +114,7 @@ else
 fi
 
 # ---------- 3. Git ----------
-say "3/6  Git"
+say "3/6  Git + image render (PNG badge)"
 if ! have git; then
   if [ "$APT" = 1 ]; then sudo apt update -y && sudo apt install -y git && ok "git installed"
   elif [ "$OS" = "macos" ]; then
@@ -122,6 +123,17 @@ if ! have git; then
   fi
 else
   skip "git $(git --version | awk '{print $3}')"
+fi
+# librsvg2-bin -> rsvg-convert, so doctor.sh ch-0 renders the PNG badge card.
+# Optional-but-recommended: doctor.sh degrades to SVG/text if no renderer present.
+if have rsvg-convert || have convert; then
+  skip "image render ($(command -v rsvg-convert 2>/dev/null || command -v convert))"
+elif [ "$APT" = 1 ]; then
+  if sudo apt install -y librsvg2-bin >/dev/null 2>&1; then ok "librsvg2-bin (rsvg-convert)"; else warn "librsvg2-bin skipped (PNG badge optional)"; fi
+elif [ "$OS" = "macos" ] && have brew; then
+  if brew install librsvg >/dev/null 2>&1; then ok "librsvg (rsvg-convert)"; else warn "librsvg skipped (PNG badge optional)"; fi
+else
+  warn "no rsvg-convert/convert — doctor.sh ch-0 will post SVG/text instead of PNG"
 fi
 
 # ---------- 4. GitHub CLI (gh) ----------

@@ -41,7 +41,7 @@ bootcamp's shared LiteLLM proxy with your personal key.
 curl -fsSL https://raw.githubusercontent.com/vibe-code-tours/vibecode-setup/main/student-setup.sh | bash
 ```
 
-Installs Node, Python, git, gh, Claude Code, opencode. Idempotent — safe to re-run.
+Installs Node, Python, git, gh, librsvg (PNG badge), Claude Code, opencode. Idempotent — safe to re-run.
 
 **Native Windows users:** install WSL first (`wsl --install` in PowerShell, reboot, open Ubuntu, then re-run the command above).
 
