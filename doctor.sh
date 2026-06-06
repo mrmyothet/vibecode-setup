@@ -17,7 +17,7 @@
 #
 # Chapter-specific:
 #   ch-0: SVG badge card → drop PNG in #ch-0-intro → instructor ✅/👏 → ch-0-done
-#   ch-1: +profile repo +PR check → posts gist → submit via /ch1 <gist-url>
+#   ch-N: posts gist → submit via /submit ch-N <gist-url> (ch-1 also checks profile+PR)
 #
 # Flags:
 #   --non-interactive  default REPLACE on windows-claude conflict (ch-0)
@@ -404,48 +404,53 @@ TPL
   echo
   echo "  Wait for instructor ✅/👏 → ch-0-done role → #ch-1 unlocks."
 
-elif [ "$CHAPTER" = "ch-1" ]; then
-  ch1_fail=0
-  [ "$CL_API"       != "ok" ] && ch1_fail=1
-  [ "$GH_AUTH"      != "ok" ] && ch1_fail=1
-  [ "$CH1_PROFILE"  != "ok" ] && ch1_fail=1
-  [ "$CH1_PR_STATE" != "ok" ] && ch1_fail=1
+else
+  # any homework chapter (ch-1, ch-2, ...). Base: proxy + gh auth.
+  # ch-1 also needs profile repo + website PR; others rely on mentor 👏 review.
+  ch_fail=0
+  [ "$CL_API"  != "ok" ] && ch_fail=1
+  [ "$GH_AUTH" != "ok" ] && ch_fail=1
+  if [ "$CHAPTER" = "ch-1" ]; then
+    [ "$CH1_PROFILE"  != "ok" ] && ch_fail=1
+    [ "$CH1_PR_STATE" != "ok" ] && ch_fail=1
+  fi
   {
-    echo "# Chapter 1 check — $(date -u '+%Y-%m-%d %H:%M UTC')"
+    echo "# ${CHAPTER} check — $(date -u '+%Y-%m-%d %H:%M UTC')"
     echo
     echo "- proxy api: $CL_API"
     echo "- gh auth: $GH_AUTH ($GH_USER)"
-    echo "- profile repo: $CH1_PROFILE"
-    echo "- website pr: ${CH1_PR:-none}"
+    if [ "$CHAPTER" = "ch-1" ]; then
+      echo "- profile repo: $CH1_PROFILE"
+      echo "- website pr: ${CH1_PR:-none}"
+    fi
     echo
     echo "---"
+    echo "chapter: $CHAPTER"
     echo "github_username: ${GH_USER:-none}"
-    echo "website_pr: ${CH1_PR:-none}"
-    echo "result: $([ "$ch1_fail" -eq 0 ] && echo PASS || echo INCOMPLETE)"
+    [ "$CHAPTER" = "ch-1" ] && echo "website_pr: ${CH1_PR:-none}"
+    echo "result: $([ "$ch_fail" -eq 0 ] && echo PASS || echo INCOMPLETE)"
   } > "$MD"
-  say "Chapter 1 report"; hr
+  say "${CHAPTER} report"; hr
   echo "  md: $MD"
-  if [ "$ch1_fail" -ne 0 ]; then
+  if [ "$ch_fail" -ne 0 ]; then
     warn "checks failed — fix the ❌ rows above and re-run. Gist not posted."
     exit 1
   fi
   if [ "$NO_POST" = "1" ]; then
     echo "  --no-post — skipping gist. Manual: gh gist create --public $MD"
   elif have gh && gh auth status >/dev/null 2>&1; then
-    url=$(gh gist create --public -d "Vibe Code Tours — Chapter 1 — @$GH_USER" "$MD" 2>/dev/null | tail -1)
+    url=$(gh gist create --public -d "Vibe Code Tours — ${CHAPTER} — @$GH_USER" "$MD" 2>/dev/null | tail -1)
     if [ -n "$url" ]; then
       ok "gist posted: $url"
       echo
-      say "Submit it now (Discord or Telegram):"; hr
-      echo "    /ch1 $url"
+      say "Submit it now (Discord — mentor approves with 👏):"; hr
+      echo "    /submit ${CHAPTER} $url"
     else
       warn "gist post failed. Manual: gh gist create --public $MD"
     fi
   else
     echo "  gh not authed — manual gist: gh gist create --public $MD"
   fi
-else
-  warn "chapter $CHAPTER has no checker yet. Post evidence in #${CHAPTER} → instructor ✅/👏."
 fi
 
 # ---------- 9. recovery on proxy fail ----------
