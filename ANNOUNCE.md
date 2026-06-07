@@ -44,7 +44,7 @@ Do these on GitHub first:
 
 Then:
 1. `bash doctor.sh ch-1` → posts a public gist when all checks pass
-2. In Discord: `/submit ch-1 <gist-url>`
+2. In Discord: paste the gist link in #ch-1 (or `/submit`)
 3. Mentor reacts 👏 → you earn 🔧 ch-1-done
 
 ⚠️ Your gh token needs the `gist` scope (browser login includes it).
@@ -59,7 +59,7 @@ GitHub မှာ အရင်လုပ်ထားရမယ်:
 
 ပြီးရင်:
 1. `bash doctor.sh ch-1` → check အကုန်အောင်ရင် gist (public) တင်ပေးမယ်
-2. Discord မှာ: `/submit ch-1 <gist-url>`
+2. Discord #ch-1 မှာ gist link ကို paste လုပ်ပါ (သို့) `/submit`
 3. Mentor က 👏 ပေးရင် → 🔧 ch-1-done ရမယ်
 
 ⚠️ gh token မှာ `gist` scope လိုတယ် (browser login လုပ်ရင် ပါပြီးသား)။

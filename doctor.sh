@@ -443,8 +443,10 @@ else
     if [ -n "$url" ]; then
       ok "gist posted: $url"
       echo
-      say "Submit it now (Discord — mentor approves with 👏):"; hr
-      echo "    /submit ${CHAPTER} $url"
+      say "Submit (Discord):"; hr
+      echo "    Paste this gist link in #${CHAPTER} — the bot checks it, a mentor 👏 approves:"
+      echo "    $url"
+      echo "    (or run the /submit command and paste the link)"
     else
       warn "gist post failed. Manual: gh gist create --public $MD"
     fi

@@ -251,15 +251,12 @@ listed rows and re-run — the gist is not posted until everything passes.
 > → mentor 👏. Chapter 1 adds the profile-repo + website-PR checks; later chapters
 > certify your environment and the mentor reviews the homework itself.
 
-**3. Submit in Discord:**
+**3. Submit in Discord** — just **paste your gist link in `#ch-1`**:
 
-```
-/submit ch-1 <gist-url>
-```
-
-The bot re-checks profile + PR, posts a report in `#ch-1`, and a **mentor approves
-with 👏** → you get the `ch-1-done` role. (`/ch1 <gist>` still works as an alias.)
-Telegram: run `/submit` in **Discord** — approval happens there.
+The bot detects the link, re-checks profile + PR, posts a report, and a **mentor
+approves with 👏** → you get the `ch-1-done` role. You can also run `/submit`
+(paste the link; chapter auto-detected) or the `/ch1` alias.
+Telegram: approval happens in **Discord** — paste your link there.
 
 Useful flags:
 - `--no-post` — save the report markdown only, skip the gist post
