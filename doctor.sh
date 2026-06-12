@@ -24,12 +24,31 @@
 #   --non-interactive  default REPLACE on windows-claude conflict (ch-0)
 #   --keep|--replace   force conflict resolution (ch-0)
 #   --no-post          save report.md only, no gist post (ch-N)
+#   --no-update        skip self-update check
 #   --out DIR          output dir (default ~/.vibecode/doctor)
 #
 # Exit codes:
 #   0  all green     1  hard fail     2  soft fail (proxy down)
 
 set -u
+
+# ---------- 0. self-update ----------
+# doctor.sh updates itself from main so chapter checks can change mid-cohort.
+# Skip with --no-update or DOCTOR_SKIP_UPDATE=1. Best-effort: offline = run as-is.
+DOCTOR_URL="https://raw.githubusercontent.com/vibe-code-tours/vibecode-setup/main/doctor.sh"
+case " $* " in *" --no-update "*) DOCTOR_SKIP_UPDATE=1 ;; esac
+if [ "${DOCTOR_SKIP_UPDATE:-0}" != "1" ] && [ -f "$0" ] && grep -q "Vibe Code Tours" "$0" 2>/dev/null; then
+  _upd_tmp=$(mktemp 2>/dev/null || echo /tmp/doctor-update.$$)
+  if curl -fsSL --max-time 10 "$DOCTOR_URL" -o "$_upd_tmp" 2>/dev/null \
+     && grep -q "Vibe Code Tours" "$_upd_tmp" 2>/dev/null \
+     && bash -n "$_upd_tmp" 2>/dev/null \
+     && ! cmp -s "$_upd_tmp" "$0"; then
+    cp "$_upd_tmp" "$0" 2>/dev/null || true
+    echo "doctor.sh updated from main — re-running..."
+    DOCTOR_SKIP_UPDATE=1 exec bash "$_upd_tmp" "$@"
+  fi
+  rm -f "$_upd_tmp"
+fi
 
 # ---------- args ----------
 CHAPTER="ch-0"
@@ -41,6 +60,7 @@ while [ $# -gt 0 ]; do
     --keep)            KEEP=1 ;;
     --replace)         REPLACE=1 ;;
     --no-post)         NO_POST=1 ;;
+    --no-update)       : ;;
     --chapter)         CHAPTER="$2"; shift ;;
     --out)             OUTDIR="$2"; shift ;;
     -h|--help)         sed -n '2,30p' "$0"; exit 0 ;;
