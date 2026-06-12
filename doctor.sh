@@ -7,6 +7,7 @@
 #   bash doctor.sh                  # default ch-0 (pre-class setup)
 #   bash doctor.sh ch-0             # explicit ch-0
 #   bash doctor.sh ch-1             # ch-1 homework (profile repo + PR)
+#   bash doctor.sh ch-2             # ch-2 homework (build repo + team proposal)
 #
 # Stages (all chapters):
 #   1. detect platform (mac | wsl | linux)
@@ -22,7 +23,8 @@
 # Flags:
 #   --non-interactive  default REPLACE on windows-claude conflict (ch-0)
 #   --keep|--replace   force conflict resolution (ch-0)
-#   --no-post          save report.md only, no gist post (ch-1)
+#   --no-post          save report.md only, no gist post (ch-N)
+#   --repo USER/NAME   ch-2 build repo (default: git remote of current dir)
 #   --out DIR          output dir (default ~/.vibecode/doctor)
 #
 # Exit codes:
@@ -33,13 +35,14 @@ set -u
 # ---------- args ----------
 CHAPTER="ch-0"
 if [ $# -gt 0 ] && [[ "$1" =~ ^ch-[0-9]+$ ]]; then CHAPTER="$1"; shift; fi
-NONINT=0; KEEP=0; REPLACE=0; OUTDIR="${HOME}/.vibecode/doctor"; NO_POST=0
+NONINT=0; KEEP=0; REPLACE=0; OUTDIR="${HOME}/.vibecode/doctor"; NO_POST=0; CH2_REPO_ARG=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --non-interactive) NONINT=1 ;;
     --keep)            KEEP=1 ;;
     --replace)         REPLACE=1 ;;
     --no-post)         NO_POST=1 ;;
+    --repo)            CH2_REPO_ARG="$2"; shift ;;
     --chapter)         CHAPTER="$2"; shift ;;
     --out)             OUTDIR="$2"; shift ;;
     -h|--help)         sed -n '2,30p' "$0"; exit 0 ;;
@@ -56,6 +59,7 @@ SVG="$OUTDIR/${CHAPTER}-report-$TS.svg"
 PNG="$OUTDIR/${CHAPTER}-report-$TS.png"
 TXT="$OUTDIR/${CHAPTER}-report-$TS.txt"
 WEBSITE_REPO="vibe-code-tours/vibe-code-tours.github.io"
+GH_ORG="vibe-code-tours"
 TEMPLATE_URL="https://raw.githubusercontent.com/vibe-code-tours/vibecode-setup/main/card-template.svg"
 KEYFILE="${VIBE_KEYFILE:-vibe-key.env}"
 
@@ -221,11 +225,81 @@ if [ "$CHAPTER" = "ch-1" ]; then
   fi
 fi
 
+# ---------- 6b. chapter 2 — build for one relative ----------
+CH2_REPO=""; CH2_REPO_STATE=fail; CH2_FILES=fail; CH2_COMMITS=fail; CH2_PROPOSAL=fail
+CH2_TEAM_REPO=""; CH2_MISSING=""
+if [ "$CHAPTER" = "ch-2" ]; then
+  say "Chapter 2 — build for one relative"; hr
+  if [ -n "$GH_USER" ]; then
+    # resolve build repo: --repo flag wins, else git remote of current dir
+    if [ -n "$CH2_REPO_ARG" ]; then
+      CH2_REPO="$CH2_REPO_ARG"
+    else
+      origin=$(git remote get-url origin 2>/dev/null || true)
+      case "$origin" in *github.com*) CH2_REPO="$origin" ;; esac
+    fi
+    # normalize URL / ssh forms -> owner/name
+    CH2_REPO=$(printf '%s' "$CH2_REPO" | sed -E 's#^(git@|https?://)github\.com[:/]##; s#\.git$##; s#/+$##')
+    if [ -z "$CH2_REPO" ]; then
+      fail "build repo unknown — run inside your project folder or: doctor.sh ch-2 --repo USER/NAME"
+    else
+      priv=$(gh api "repos/$CH2_REPO" --jq .private 2>/dev/null)
+      if [ "$priv" = "false" ]; then
+        CH2_REPO_STATE=ok; ok "build repo public: github.com/$CH2_REPO"
+      elif [ "$priv" = "true" ]; then
+        fail "build repo $CH2_REPO is PRIVATE — make it public (repo Settings → Danger Zone)"
+      else
+        fail "build repo $CH2_REPO not found on GitHub"
+      fi
+      if [ "$CH2_REPO_STATE" = "ok" ]; then
+        for f in README.md CLAUDE.md feedback.md spec.md; do
+          if gh api "repos/$CH2_REPO/contents/$f" >/dev/null 2>&1; then
+            ok "$f"
+          else
+            fail "$f missing"; CH2_MISSING="${CH2_MISSING} ${f}"
+          fi
+        done
+        [ -z "$CH2_MISSING" ] && CH2_FILES=ok
+        ncommits=$(gh api "repos/$CH2_REPO/commits?per_page=3" --jq length 2>/dev/null || echo 0)
+        if [ "${ncommits:-0}" -ge 3 ]; then
+          CH2_COMMITS=ok; ok "commits: 3+"
+        else
+          fail "need 3+ commits showing build history (found ${ncommits:-0})"
+        fi
+      fi
+    fi
+    # proposal lives in your team's private repo: member-proposals/<you>.md
+    TEAM_REPOS=$(gh api "orgs/$GH_ORG/repos?per_page=100" --jq '.[].name' 2>/dev/null | grep -E '^team-[0-9]+$' || true)
+    if [ -n "$TEAM_REPOS" ]; then
+      for t in $TEAM_REPOS; do
+        if gh api "repos/$GH_ORG/$t/contents/member-proposals/$GH_USER.md" >/dev/null 2>&1; then
+          CH2_PROPOSAL=ok; CH2_TEAM_REPO="$t"; break
+        fi
+      done
+      if [ "$CH2_PROPOSAL" = "ok" ]; then
+        ok "team proposal: $CH2_TEAM_REPO/member-proposals/$GH_USER.md"
+      else
+        CH2_TEAM_REPO=$(printf '%s\n' "$TEAM_REPOS" | head -1)
+        fail "no member-proposals/$GH_USER.md in your team repo — copy member-proposals/_TEMPLATE.md, fill Gist/Story/Why, push"
+      fi
+    else
+      fail "no team repo visible — run /repo-access in Discord, accept the GitHub invite, retry"
+    fi
+  else
+    fail "skipping ch-2 checks — gh not authed"
+  fi
+fi
+
 # ---------- 7. results JSON ----------
 # ch1 block only when actually run (ch-1); keeps it off the ch-0 card
 CH1_JSON=""
 if [ "$CHAPTER" = "ch-1" ]; then
   CH1_JSON="  \"ch1\": { \"profile\": \"$CH1_PROFILE\", \"pr_url\": \"$CH1_PR\", \"pr_state\": \"$CH1_PR_STATE\" },
+"
+fi
+CH2_JSON=""
+if [ "$CHAPTER" = "ch-2" ]; then
+  CH2_JSON="  \"ch2\": { \"repo\": \"$CH2_REPO\", \"repo_state\": \"$CH2_REPO_STATE\", \"files\": \"$CH2_FILES\", \"commits\": \"$CH2_COMMITS\", \"proposal\": \"$CH2_PROPOSAL\", \"team_repo\": \"$CH2_TEAM_REPO\" },
 "
 fi
 cat > "$JSON" <<EOF
@@ -242,7 +316,7 @@ cat > "$JSON" <<EOF
   },
   "gh": { "auth": "$GH_AUTH", "pr_probe": "$GH_PR" },
   "proxy_api": "$CL_API",
-${CH1_JSON}  "score": "$checks_pass/$checks_total"
+${CH1_JSON}${CH2_JSON}  "score": "$checks_pass/$checks_total"
 }
 EOF
 ok "results json: $JSON"
@@ -414,6 +488,11 @@ else
     [ "$CH1_PROFILE"  != "ok" ] && ch_fail=1
     [ "$CH1_PR_STATE" != "ok" ] && ch_fail=1
   fi
+  if [ "$CHAPTER" = "ch-2" ]; then
+    for r in "$CH2_REPO_STATE" "$CH2_FILES" "$CH2_COMMITS" "$CH2_PROPOSAL"; do
+      [ "$r" != "ok" ] && ch_fail=1
+    done
+  fi
   {
     echo "# ${CHAPTER} check — $(date -u '+%Y-%m-%d %H:%M UTC')"
     echo
@@ -423,11 +502,18 @@ else
       echo "- profile repo: $CH1_PROFILE"
       echo "- website pr: ${CH1_PR:-none}"
     fi
+    if [ "$CHAPTER" = "ch-2" ]; then
+      echo "- build repo: ${CH2_REPO:-none} ($CH2_REPO_STATE)"
+      echo "- files (README/CLAUDE/feedback/spec): $CH2_FILES"
+      echo "- commits 3+: $CH2_COMMITS"
+      echo "- team proposal: $CH2_PROPOSAL (${CH2_TEAM_REPO:-no-team-repo})"
+    fi
     echo
     echo "---"
     echo "chapter: $CHAPTER"
     echo "github_username: ${GH_USER:-none}"
     [ "$CHAPTER" = "ch-1" ] && echo "website_pr: ${CH1_PR:-none}"
+    [ "$CHAPTER" = "ch-2" ] && echo "build_repo: ${CH2_REPO:-none}"
     echo "result: $([ "$ch_fail" -eq 0 ] && echo PASS || echo INCOMPLETE)"
   } > "$MD"
   say "${CHAPTER} report"; hr
