@@ -253,7 +253,8 @@ if [ "$CHAPTER" = "ch-2" ]; then
     TEAM_REPOS=$(gh api "orgs/$GH_ORG/repos?per_page=100" --jq '.[].name' 2>/dev/null | grep -E '^team-[0-9]+$' || true)
     if [ -n "$TEAM_REPOS" ]; then
       for t in $TEAM_REPOS; do
-        if gh api "repos/$GH_ORG/$t/contents/member-proposals/$GH_USER.md" >/dev/null 2>&1; then
+        # case-insensitive filename match (logins case-insensitive, files aren't)
+        if gh api "repos/$GH_ORG/$t/contents/member-proposals" --jq '.[].name' 2>/dev/null | grep -Fixq "$GH_USER.md"; then
           CH2_PROPOSAL=ok; CH2_TEAM_REPO="$t"; break
         fi
       done
