@@ -189,6 +189,9 @@ GH_USER=""; GH_AUTH=fail; GH_PR=fail
 if have gh && gh auth status >/dev/null 2>&1; then
   GH_AUTH=ok
   GH_USER="$(gh api user --jq .login 2>/dev/null || true)"
+  # lowercased login for filename guidance (GitHub logins are case-insensitive;
+  # team.yml + CI use lowercase, so suggest a lowercase proposal filename).
+  GH_USER_LC="$(printf '%s' "$GH_USER" | tr '[:upper:]' '[:lower:]')"
   if [ -n "$GH_USER" ]; then ok "auth: $GH_USER"; else warn "auth ok but /user empty"; fi
   if gh pr list --repo cli/cli --limit 1 >/dev/null 2>&1; then GH_PR=ok; ok "pr read probe (cli/cli)"
   else fail "pr read probe — token may lack repo scope"
@@ -259,10 +262,10 @@ if [ "$CHAPTER" = "ch-2" ]; then
         fi
       done
       if [ "$CH2_PROPOSAL" = "ok" ]; then
-        ok "team proposal: $CH2_TEAM_REPO/member-proposals/$GH_USER.md"
+        ok "team proposal: $CH2_TEAM_REPO/member-proposals/$GH_USER_LC.md"
       else
         CH2_TEAM_REPO=$(printf '%s\n' "$TEAM_REPOS" | head -1)
-        fail "no member-proposals/$GH_USER.md in your team repo — copy member-proposals/_TEMPLATE.md, fill Gist/Story/Why, push"
+        fail "no member-proposals/$GH_USER_LC.md in your team repo — copy member-proposals/_TEMPLATE.md to that lowercase name, fill Gist/Story/Why, push"
       fi
     else
       fail "no team repo visible — run /repo-access in Discord, accept the GitHub invite, retry"
