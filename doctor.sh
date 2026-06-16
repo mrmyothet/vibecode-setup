@@ -284,7 +284,7 @@ CH3_REPO_URL=""; CH3_SLIDES_URL=""; CH3_EVIDENCE_PATHS=""
 if [ "$CHAPTER" = "ch-3" ]; then
   say "Chapter 3 — personal project"; hr
   if [ ! -f report.md ]; then
-    fail "no report.md in this directory — copy team-template ch-3/_TEMPLATE.md here, fill it, run again"
+    fail "no report.md here — copy ch-3/_TEMPLATE.md from your team repo, fill it, run again"
   else
     CH3_REPORT=ok; ok "report.md found"
     CH3_REPO_URL=$(grep -m1 '^personal_repo_url:' report.md | sed 's/^personal_repo_url:[[:space:]]*//')
