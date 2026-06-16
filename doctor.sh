@@ -8,6 +8,7 @@
 #   bash doctor.sh ch-0             # explicit ch-0
 #   bash doctor.sh ch-1             # ch-1 homework (profile repo + PR)
 #   bash doctor.sh ch-2             # ch-2 homework (proposal in team repo)
+#   bash doctor.sh ch-3             # ch-3 homework (personal project: mcp+skill+agent, 6×20 slides)
 #
 # Stages (all chapters):
 #   1. detect platform (mac | wsl | linux)
@@ -275,6 +276,61 @@ if [ "$CHAPTER" = "ch-2" ]; then
   fi
 fi
 
+# ---------- 6c. chapter 3 — personal project ----------
+# Run INSIDE your personal project repo. Validates report.md + repo contents.
+CH3_REPORT=fail; CH3_REPO=""; CH3_MCP=fail; CH3_SKILL=fail; CH3_AGENT=fail
+CH3_SLIDES=fail; CH3_EVIDENCE=fail; CH3_METHOD=fail
+CH3_REPO_URL=""; CH3_SLIDES_URL=""; CH3_EVIDENCE_PATHS=""
+if [ "$CHAPTER" = "ch-3" ]; then
+  say "Chapter 3 — personal project"; hr
+  if [ ! -f report.md ]; then
+    fail "no report.md here — copy ch-3/_TEMPLATE.md from your team repo, fill it, run again"
+  else
+    CH3_REPORT=ok; ok "report.md found"
+    CH3_REPO_URL=$(grep -m1 '^personal_repo_url:' report.md | sed 's/^personal_repo_url:[[:space:]]*//')
+    CH3_SLIDES_URL=$(grep -m1 '^slides_url:' report.md | sed 's/^slides_url:[[:space:]]*//')
+    CH3_EVIDENCE_PATHS=$(grep -E '^- *path:' report.md | sed 's/^- *path:[[:space:]]*//')
+    if awk '/^## Methodology/{f=1;next} /^## /{f=0} f && NF && $0 !~ /^<!--/' report.md | grep -q .; then
+      CH3_METHOD=ok; ok "methodology written"
+    else
+      fail "report.md Methodology section is empty"
+    fi
+    REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
+    CH3_REPO=$(printf '%s' "$REMOTE" | sed -E 's#(git@|https?://)github.com[:/]##; s/\.git$//')
+    if [ -n "$GH_USER" ] && [ -n "$CH3_REPO" ] && [ "${CH3_REPO%%/*}" = "$GH_USER" ]; then
+      ok "repo: github.com/$CH3_REPO (owner @$GH_USER)"
+    else
+      fail "git remote owner doesn't match @$GH_USER (remote: ${CH3_REPO:-none}) — push to your own repo"
+    fi
+    if [ -f .mcp.json ] || ls .claude/settings*.json >/dev/null 2>&1; then CH3_MCP=ok; ok ".mcp.json present"; else fail "no .mcp.json (or .claude/settings*.json mcpServers)"; fi
+    if ls .claude/skills/*/SKILL.md >/dev/null 2>&1; then CH3_SKILL=ok; ok ".claude/skills/<name>/SKILL.md present"; else fail "no .claude/skills/<name>/SKILL.md"; fi
+    if ls .claude/agents/*.md >/dev/null 2>&1; then CH3_AGENT=ok; ok ".claude/agents/<name>.md present"; else fail "no .claude/agents/<name>.md"; fi
+    CH3_EVIDENCE=ok
+    if [ -n "$CH3_EVIDENCE_PATHS" ]; then
+      while IFS= read -r p; do
+        [ -z "$p" ] && continue
+        if [ ! -e "$p" ]; then CH3_EVIDENCE=fail; fail "evidence path missing: $p"; fi
+      done <<EOF2
+$CH3_EVIDENCE_PATHS
+EOF2
+      [ "$CH3_EVIDENCE" = ok ] && ok "evidence paths exist"
+    else
+      CH3_EVIDENCE=fail; fail "no evidence '- path:' lines in report.md"
+    fi
+    if [ -n "$CH3_SLIDES_URL" ] && [ -f "$CH3_SLIDES_URL" ]; then
+      sl_seps=$(grep -cE '^---[[:space:]]*$' "$CH3_SLIDES_URL")
+      sl_count=$((sl_seps - 1))
+      if [ "$sl_count" -eq 6 ] && grep -qE '^auto-advance:[[:space:]]*20' "$CH3_SLIDES_URL"; then
+        CH3_SLIDES=ok; ok "slides: 6×20 Marp ($CH3_SLIDES_URL)"
+      else
+        fail "slides must be Marp with 6 slides + 'auto-advance: 20' (found $sl_count slides)"
+      fi
+    else
+      fail "slides_url file not found: ${CH3_SLIDES_URL:-none}"
+    fi
+  fi
+fi
+
 # ---------- 7. results JSON ----------
 # ch1 block only when actually run (ch-1); keeps it off the ch-0 card
 CH1_JSON=""
@@ -476,6 +532,12 @@ else
   if [ "$CHAPTER" = "ch-2" ]; then
     [ "$CH2_PROPOSAL" != "ok" ] && ch_fail=1
   fi
+  if [ "$CHAPTER" = "ch-3" ]; then
+    for v in "$CH3_REPORT" "$CH3_MCP" "$CH3_SKILL" "$CH3_AGENT" "$CH3_SLIDES" "$CH3_EVIDENCE" "$CH3_METHOD"; do
+      [ "$v" != "ok" ] && ch_fail=1
+    done
+    [ "${CH3_REPO%%/*}" != "$GH_USER" ] && ch_fail=1
+  fi
   {
     echo "# ${CHAPTER} check — $(date -u '+%Y-%m-%d %H:%M UTC')"
     echo
@@ -488,11 +550,27 @@ else
     if [ "$CHAPTER" = "ch-2" ]; then
       echo "- team proposal: $CH2_PROPOSAL (${CH2_TEAM_REPO:-no-team-repo})"
     fi
+    if [ "$CHAPTER" = "ch-3" ]; then
+      echo "- repo: $CH3_REPO"
+      echo "- mcp/skill/agent: $CH3_MCP/$CH3_SKILL/$CH3_AGENT"
+      echo "- slides: $CH3_SLIDES ($CH3_SLIDES_URL)"
+    fi
     echo
     echo "---"
     echo "chapter: $CHAPTER"
     echo "github_username: ${GH_USER:-none}"
     [ "$CHAPTER" = "ch-1" ] && echo "website_pr: ${CH1_PR:-none}"
+    if [ "$CHAPTER" = "ch-3" ]; then
+      echo "personal_repo_url: $CH3_REPO_URL"
+      echo "slides_url: $CH3_SLIDES_URL"
+      echo "project_summary: $(grep -m1 '^project_summary:' report.md | sed 's/^project_summary:[[:space:]]*//')"
+      echo
+      echo "## Methodology"
+      awk '/^## Methodology/{f=1;next} /^## /{f=0} f' report.md
+      echo
+      echo "## Evidence"
+      grep -E '^- *path:' report.md
+    fi
     echo "result: $([ "$ch_fail" -eq 0 ] && echo PASS || echo INCOMPLETE)"
   } > "$MD"
   say "${CHAPTER} report"; hr
