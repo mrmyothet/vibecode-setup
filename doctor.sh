@@ -375,13 +375,13 @@ if [ "$CHAPTER" = "ch-3" ]; then
           fail "$mcp_path has no mcpServers entry (empty/stub config)"
         fi
         # skill: present AND not a stub (size >= threshold)
-        skill_sz=$(printf '%s\n' "$TREE" | awk -F'\t' 'tolower($2) ~ /^\.claude\/skills\/[^/]+\/skill\.md$/ {print $1; exit}')
-        if [ -z "$skill_sz" ]; then fail "no .claude/skills/<name>/SKILL.md in repo"
+        skill_sz=$(printf '%s\n' "$TREE" | awk -F'\t' 'tolower($2) ~ "^\\.claude/skills/[^/]+/skill\\.md$" {print $1; exit}')
+        if [ -z "$skill_sz" ]; then fail "no .claude/skills/<name>/SKILL.md on your default branch (is .claude/ in .gitignore? un-ignore it and push)"
         elif [ "$skill_sz" -ge "$CH3_MIN_SKILL_BYTES" ]; then CH3_SKILL=ok; ok ".claude/skills SKILL.md present (${skill_sz}b)"
         else fail "SKILL.md too small (${skill_sz}b < ${CH3_MIN_SKILL_BYTES}b — looks like a stub)"; fi
         # agent: present AND not a stub
-        agent_sz=$(printf '%s\n' "$TREE" | awk -F'\t' 'tolower($2) ~ /^\.claude\/agents\/[^/]+\.md$/ {print $1; exit}')
-        if [ -z "$agent_sz" ]; then fail "no .claude/agents/<name>.md in repo"
+        agent_sz=$(printf '%s\n' "$TREE" | awk -F'\t' 'tolower($2) ~ "^\\.claude/agents/[^/]+\\.md$" {print $1; exit}')
+        if [ -z "$agent_sz" ]; then fail "no .claude/agents/<name>.md on your default branch (is .claude/ in .gitignore? un-ignore it and push)"
         elif [ "$agent_sz" -ge "$CH3_MIN_AGENT_BYTES" ]; then CH3_AGENT=ok; ok ".claude/agents agent present (${agent_sz}b)"
         else fail "agent .md too small (${agent_sz}b < ${CH3_MIN_AGENT_BYTES}b — looks like a stub)"; fi
 
@@ -390,7 +390,7 @@ if [ "$CHAPTER" = "ch-3" ]; then
           while IFS= read -r p; do
             [ -z "$p" ] && continue
             case "$p" in '<'*'>') continue;; esac
-            printf '%s\n' "$TREE_PATHS" | grep -qxF "$p" || { CH3_EVIDENCE=fail; fail "evidence path not in repo: $p"; }
+            printf '%s\n' "$TREE_PATHS" | grep -qxF "$p" || { CH3_EVIDENCE=fail; fail "evidence path not on default branch: $p (is .claude/ gitignored? push it to your default branch)"; }
           done <<EOF2
 $ev_paths
 EOF2
