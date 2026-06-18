@@ -254,7 +254,7 @@ CH2_PROPOSAL=fail; CH2_TEAM_REPO=""
 if [ "$CHAPTER" = "ch-2" ]; then
   say "Chapter 2 — team proposal"; hr
   if [ -n "$GH_USER" ]; then
-    TEAM_REPOS=$(gh api "orgs/$GH_ORG/repos?per_page=100" --jq '.[].name' 2>/dev/null | grep -E '^team-[0-9]+$' || true)
+    TEAM_REPOS=$(gh api --paginate "orgs/$GH_ORG/repos?per_page=100" --jq '.[].name' 2>/dev/null | grep -E '^team-[0-9]+$' || true)
     if [ -n "$TEAM_REPOS" ]; then
       for t in $TEAM_REPOS; do
         # case-insensitive filename match (logins case-insensitive, files aren't)
@@ -292,7 +292,7 @@ if [ "$CHAPTER" = "ch-3" ]; then
     fail "skipping ch-3 checks — gh not authed (run: gh auth login)"
   else
     # 1. locate your team repo + ch-3/<you>/ dir (login match is case-insensitive)
-    TEAM_REPOS=$(gh api "orgs/$GH_ORG/repos?per_page=100" --jq '.[].name' 2>/dev/null | grep -E '^team-[0-9]+$' || true)
+    TEAM_REPOS=$(gh api --paginate "orgs/$GH_ORG/repos?per_page=100" --jq '.[].name' 2>/dev/null | grep -E '^team-[0-9]+$' || true)
     for t in $TEAM_REPOS; do
       d=$(gh api "repos/$GH_ORG/$t/contents/ch-3" --jq '.[].name' 2>/dev/null | grep -ixF "$GH_USER" | head -1 || true)
       if [ -n "$d" ] && gh api "repos/$GH_ORG/$t/contents/ch-3/$d/report.md" >/dev/null 2>&1; then
@@ -341,6 +341,9 @@ if [ "$CHAPTER" = "ch-3" ]; then
         fi
 
         # 3. evidence: recursive tree of personal repo → .mcp/.claude + claimed paths
+        if [ "$(gh api "repos/$CH3_REPO/git/trees/HEAD?recursive=1" --jq '.truncated' 2>/dev/null)" = "true" ]; then
+          warn "repo tree too large — GitHub truncated it; evidence/slide checks may be incomplete, instructor will verify manually"
+        fi
         TREE=$(gh api "repos/$CH3_REPO/git/trees/HEAD?recursive=1" --jq '.tree[]|select(.type=="blob")|.path' 2>/dev/null || true)
         if printf '%s\n' "$TREE" | grep -qE '^\.mcp\.json$|^\.claude/settings[^/]*\.json$'; then CH3_MCP=ok; ok ".mcp.json present"; else fail "no .mcp.json (or .claude/settings*.json) in repo"; fi
         if printf '%s\n' "$TREE" | grep -qiE '^\.claude/skills/[^/]+/SKILL\.md$'; then CH3_SKILL=ok; ok ".claude/skills/<name>/SKILL.md present"; else fail "no .claude/skills/<name>/SKILL.md in repo"; fi
