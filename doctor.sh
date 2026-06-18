@@ -312,14 +312,20 @@ if [ "$CHAPTER" = "ch-3" ]; then
     fi
 
     if [ "$CH3_REPORT" = ok ]; then
-      CH3_REPO_URL=$(grep -m1 '^personal_repo_url:' "$CH3_REPORT_TMP" | sed 's/^personal_repo_url:[[:space:]]*//')
-      CH3_SLIDES_URL=$(grep -m1 '^slides_url:' "$CH3_REPORT_TMP" | sed 's/^slides_url:[[:space:]]*//')
-      CH3_SUMMARY=$(grep -m1 '^project_summary:' "$CH3_REPORT_TMP" | sed 's/^project_summary:[[:space:]]*//')
+      tr -d '\r' < "$CH3_REPORT_TMP" > "$CH3_REPORT_TMP.n" && mv "$CH3_REPORT_TMP.n" "$CH3_REPORT_TMP"
+      # tolerant field read: optional leading/trailing **, spaces, case-insensitive key
+      get_field() { grep -m1 -iE "^[[:space:]*]*$1[[:space:]]*:" "$CH3_REPORT_TMP" | sed -E "s/^[[:space:]*]*$1[[:space:]]*:[[:space:]*]*//; s/[[:space:]*]+\$//"; }
+      CH3_REPO_URL=$(get_field personal_repo_url)
+      CH3_SLIDES_URL=$(get_field slides_url)
+      CH3_SUMMARY=$(get_field project_summary)
 
-      if awk '/^## Methodology/{f=1;next} /^## /{f=0} f && NF && $0 !~ /^<!--/' "$CH3_REPORT_TMP" | grep -q .; then
+      # methodology (canonical, must match lib/ch3-checks.mjs): section minus
+      # comment-lines, minus all whitespace; require >= 10 chars.
+      meth_chars=$(awk '/^## Methodology/{f=1;next} /^## /{f=0} f' "$CH3_REPORT_TMP" | grep -vE '^[[:space:]]*<!--' | tr -d '[:space:]')
+      if [ "${#meth_chars}" -ge 10 ]; then
         CH3_METHOD=ok; ok "methodology written"
       else
-        fail "report.md Methodology section is empty"
+        fail "report.md Methodology section too short — write 2-4 sentences"
       fi
 
       # 1b. report.md must be committed BY YOU (anti-forgery: teammates can write the team repo)
@@ -404,9 +410,10 @@ EOF2
           fail "slides_url empty in report.md"
         elif gh api "repos/$CH3_REPO/contents/$sp" -H "Accept: application/vnd.github.raw" > "$OUTDIR/ch3-slides-$TS.md" 2>/dev/null && [ -s "$OUTDIR/ch3-slides-$TS.md" ]; then
           slf="$OUTDIR/ch3-slides-$TS.md"
+          tr -d '\r' < "$slf" > "$slf.n" && mv "$slf.n" "$slf"
           fm=$(awk 'NR==1&&$0=="---"{f=1;next} f&&$0=="---"{exit} f{print}' "$slf")
           sl_count=$(awk 'NR==1&&$0=="---"{infm=1;next} infm&&$0=="---"{infm=0;body=1;prev="";next} infm{next} {if($0 ~ /^---[ \t]*$/ && prev==""){s++} prev=$0} END{if(body)print s+1; else print 0}' "$slf")
-          if printf '%s\n' "$fm" | grep -qE '^marp:[[:space:]]*true' && [ "${sl_count:-0}" -eq 6 ] && printf '%s\n' "$fm" | grep -qE '^auto-advance:[[:space:]]*20'; then
+          if printf '%s\n' "$fm" | grep -qE '^[[:space:]]*marp:[[:space:]]*true' && [ "${sl_count:-0}" -eq 6 ] && printf '%s\n' "$fm" | grep -qE '^[[:space:]]*auto-advance:[[:space:]]*20'; then
             CH3_SLIDES=ok; ok "slides: 6×20 Marp ($sp)"
           else
             fail "slides must be Marp (marp: true) with 6 slides + 'auto-advance: 20' (found ${sl_count:-0} slides at $sp)"
