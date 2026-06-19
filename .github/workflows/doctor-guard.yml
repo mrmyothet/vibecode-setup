@@ -1,0 +1,62 @@
+name: doctor guard
+
+# Server-side mirror of .githooks/pre-push:
+#   1. all tracked *.sh pass shellcheck (-S warning)
+#   2. if doctor.sh changed vs base, DOCTOR_VERSION must be bumped
+# Local hook can be skipped (--no-verify / no hooksPath); this can't.
+
+on:
+  pull_request:
+    paths: ['**/*.sh']
+  push:
+    branches: [main]
+    paths: ['**/*.sh']
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: shellcheck (-S warning)
+        shell: bash
+        run: |
+          command -v shellcheck >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y shellcheck; }
+          fail=0
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            shellcheck -S warning "$f" || fail=1
+          done < <(git ls-files '*.sh')
+          [ "$fail" -eq 0 ]
+
+      - name: doctor.sh version bump
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            git fetch -q origin "$BASE_REF"
+            base="origin/$BASE_REF"
+          else
+            base="$BEFORE_SHA"
+          fi
+          if ! git rev-parse -q --verify "$base" >/dev/null 2>&1; then
+            echo "no comparable base ($base) — skipping version check"; exit 0
+          fi
+          if git diff --quiet "$base" HEAD -- doctor.sh; then
+            echo "doctor.sh unchanged — ok"; exit 0
+          fi
+          old=$(git show "$base:doctor.sh" 2>/dev/null | grep -m1 '^DOCTOR_VERSION=' | cut -d'"' -f2)
+          new=$(git show HEAD:doctor.sh    2>/dev/null | grep -m1 '^DOCTOR_VERSION=' | cut -d'"' -f2)
+          if [ -n "$old" ] && [ "$old" = "$new" ]; then
+            echo "::error file=doctor.sh::doctor.sh changed but DOCTOR_VERSION still '$new' — bump it (date or date+letter)."
+            exit 1
+          fi
+          echo "version bump ok: ${old:-none} -> ${new:-none}"
