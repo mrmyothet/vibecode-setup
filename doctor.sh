@@ -204,26 +204,39 @@ fi
 # ---------- 5. proxy / claude api ----------
 say "Proxy / Claude API"; hr
 CL_API=fail; CL_REPLY=""; PROXY_HTTP=""
+# two auth paths: own Claude sub (claude -p) OR our proxy key (VIBE_PROXY+VIBE_KEY).
+# pass if EITHER works; the unused path is informational (⚠), not a failure.
+CL_OWN=fail; CL_OWN_MSG="claude CLI not installed"
+CL_PROXY=fail; CL_PROXY_MSG="VIBE_PROXY+VIBE_KEY not set in $KEYFILE"
+# path A: own subscription
 if have claude; then
   if CL_REPLY="$(claude -p "ping in one word" --output-format text 2>&1)" && [ -n "$CL_REPLY" ] && ! echo "$CL_REPLY" | grep -qiE "error|401|403|fetch failed|ENOTFOUND"; then
-    CL_API=ok; ok "claude -p ping: $(echo "$CL_REPLY" | head -1 | cut -c1-60)"
+    CL_OWN=ok; CL_OWN_MSG="$(echo "$CL_REPLY" | head -1 | cut -c1-60)"
   else
-    fail "claude -p: $(echo "$CL_REPLY" | head -1 | cut -c1-100)"
+    CL_OWN_MSG="$(echo "$CL_REPLY" | head -1 | cut -c1-100)"
   fi
 fi
-# curl fallback (also primary when claude missing)
-if [ "$CL_API" != "ok" ] && [ -n "$VIBE_PROXY" ] && [ -n "$VIBE_KEY" ]; then
+# path B: our proxy key
+if [ -n "$VIBE_PROXY" ] && [ -n "$VIBE_KEY" ]; then
   PROXY_HTTP=$(curl -s -o /tmp/doctor_api.json -w '%{http_code}' --max-time 30 \
     "${VIBE_PROXY%/}/v1/chat/completions" \
     -H "Authorization: Bearer $VIBE_KEY" -H "Content-Type: application/json" \
     -d '{"model":"mimo-v2.5","messages":[{"role":"user","content":"say ok"}],"max_tokens":5}' 2>/dev/null)
   if [ "$PROXY_HTTP" = "200" ]; then
-    CL_API=ok; ok "proxy curl: HTTP 200"
+    CL_PROXY=ok; CL_PROXY_MSG="HTTP 200"
   else
-    fail "proxy curl: HTTP ${PROXY_HTTP:-no-response} (check VIBE_PROXY/VIBE_KEY)"
+    CL_PROXY_MSG="HTTP ${PROXY_HTTP:-no-response} (check VIBE_PROXY/VIBE_KEY)"
   fi
-elif [ "$CL_API" != "ok" ]; then
-  fail "no proxy creds — set VIBE_PROXY+VIBE_KEY in $KEYFILE"
+fi
+# verdict: either path is enough
+if [ "$CL_OWN" = "ok" ] || [ "$CL_PROXY" = "ok" ]; then
+  CL_API=ok
+  if [ "$CL_OWN" = "ok" ]; then ok "own sub (claude -p): $CL_OWN_MSG"; else warn "own sub (claude -p): $CL_OWN_MSG"; fi
+  if [ "$CL_PROXY" = "ok" ]; then ok "our key (proxy): $CL_PROXY_MSG"; else warn "our key (proxy): $CL_PROXY_MSG"; fi
+else
+  fail "own sub (claude -p): $CL_OWN_MSG"
+  fail "our key (proxy): $CL_PROXY_MSG"
+  fail "need ONE working — fix claude login OR set VIBE_PROXY+VIBE_KEY in $KEYFILE"
 fi
 
 # ---------- 6. chapter-specific ----------
