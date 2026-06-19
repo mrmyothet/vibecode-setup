@@ -34,25 +34,40 @@
 set -u
 
 # version stamp — bump on every doctor.sh change (helps users + mentors debug which build is running)
-DOCTOR_VERSION="2026-06-19"
+DOCTOR_VERSION="2026-06-19b"
 
 # ---------- 0. self-update ----------
 # doctor.sh updates itself from main so chapter checks can change mid-cohort.
 # Skip with --no-update or DOCTOR_SKIP_UPDATE=1. Best-effort: offline = run as-is.
+# DOCTOR_UPDATE_STATUS + REMOTE_VERSION carry across the post-update re-exec so
+# the banner can show users/mentors exactly what happened (updated/current/offline/stale).
 DOCTOR_URL="https://raw.githubusercontent.com/vibe-code-tours/vibecode-setup/main/doctor.sh"
+DOCTOR_UPDATE_STATUS="${DOCTOR_UPDATE_STATUS:-}"
+REMOTE_VERSION="${REMOTE_VERSION:-}"
 case " $* " in *" --no-update "*) DOCTOR_SKIP_UPDATE=1 ;; esac
 if [ "${DOCTOR_SKIP_UPDATE:-0}" != "1" ] && [ -f "$0" ] && grep -q "Vibe Code Tours" "$0" 2>/dev/null; then
   _upd_tmp=$(mktemp 2>/dev/null || echo /tmp/doctor-update.$$)
   if curl -fsSL --max-time 10 "$DOCTOR_URL" -o "$_upd_tmp" 2>/dev/null \
      && grep -q "Vibe Code Tours" "$_upd_tmp" 2>/dev/null \
-     && bash -n "$_upd_tmp" 2>/dev/null \
-     && ! cmp -s "$_upd_tmp" "$0"; then
-    cp "$_upd_tmp" "$0" 2>/dev/null || true
-    echo "doctor.sh updated from main — re-running..."
-    DOCTOR_SKIP_UPDATE=1 exec bash "$_upd_tmp" "$@"
+     && bash -n "$_upd_tmp" 2>/dev/null; then
+    REMOTE_VERSION="$(grep -m1 '^DOCTOR_VERSION=' "$_upd_tmp" | cut -d'"' -f2)"
+    if ! cmp -s "$_upd_tmp" "$0"; then
+      if cp "$_upd_tmp" "$0" 2>/dev/null; then
+        rm -f "$_upd_tmp"
+        echo "doctor.sh updated from main — re-running..."
+        DOCTOR_SKIP_UPDATE=1 DOCTOR_UPDATE_STATUS=updated REMOTE_VERSION="$REMOTE_VERSION" exec bash "$0" "$@"
+      else
+        DOCTOR_UPDATE_STATUS=stale   # newer build on main but $0 not writable
+      fi
+    else
+      DOCTOR_UPDATE_STATUS=current
+    fi
+  else
+    DOCTOR_UPDATE_STATUS=offline
   fi
   rm -f "$_upd_tmp"
 fi
+[ -z "$DOCTOR_UPDATE_STATUS" ] && DOCTOR_UPDATE_STATUS=skipped
 
 # ---------- args ----------
 CHAPTER="ch-0"
@@ -93,6 +108,25 @@ warn() { printf '  %s⚠ %s%s\n'  "$c_warn" "$c_reset" "$*"; }
 fail() { printf '  %s❌%s %s\n' "$c_err"  "$c_reset" "$*"; }
 hr()   { printf '%s──────────────────────────────────────────────%s\n' "$c_dim" "$c_reset"; }
 say()  { printf '%s%s%s\n' "$c_bold" "$*" "$c_reset"; }
+
+# plain-text, copy-paste debug block for mentors (no ANSI, fenced for Discord).
+# Called on any failure so students paste ONE block instead of a screenshot.
+print_debug_bundle() {
+  echo
+  say "Debug bundle — copy ALL lines below into #help (mentors read this):"; hr
+  echo '```'
+  echo "doctor $DOCTOR_VERSION | update:$DOCTOR_UPDATE_STATUS${REMOTE_VERSION:+ (main:$REMOTE_VERSION)} | $(date '+%F %T %Z')"
+  echo "chapter:$CHAPTER platform:$PLATFORM claude:${CLAUDE_LOC:-?} user:${GH_USER:-none}"
+  echo "checks: node:${NODE_R:-?} npm:${NPM_R:-?} py:${PY_R:-?} git:${GIT_R:-?} gh:${GH_R:-?} claude:${CL_R:-?}"
+  echo "auth: gh:${GH_AUTH:-?} proxy:${CL_API:-?}"
+  case "$CHAPTER" in
+    ch-1) echo "ch1: profile:${CH1_PROFILE:-?} pr:${CH1_PR_STATE:-?}" ;;
+    ch-2) echo "ch2: proposal:${CH2_PROPOSAL:-?}" ;;
+    ch-3) echo "ch3: report:${CH3_REPORT:-?} author:${CH3_AUTHOR:-?} repo:${CH3_OWNER:-?} mcp:${CH3_MCP:-?} skill:${CH3_SKILL:-?} agent:${CH3_AGENT:-?} slides:${CH3_SLIDES:-?} stars:${CH3_STARS:-?}" ;;
+  esac
+  echo "score: ${checks_pass:-0}/${checks_total:-0}  json: ${JSON:-none}"
+  echo '```'
+}
 have() { command -v "$1" >/dev/null 2>&1; }
 
 # ---------- load vibe-key.env (for proxy curl fallback) ----------
@@ -109,6 +143,13 @@ say "Vibe Code Doctor — $CHAPTER"; hr
 echo "  version:  $DOCTOR_VERSION"
 echo "  run at:   $(date '+%Y-%m-%d %H:%M:%S %Z')"
 echo "  platform: $PLATFORM"
+case "$DOCTOR_UPDATE_STATUS" in
+  updated) ok   "self-update: updated to latest ($DOCTOR_VERSION)" ;;
+  current) ok   "self-update: already on latest" ;;
+  offline) warn "self-update: offline — running local build $DOCTOR_VERSION" ;;
+  stale)   fail "self-update: FAILED — main has ${REMOTE_VERSION:-a newer build}, you run $DOCTOR_VERSION (re-download doctor.sh)" ;;
+  *)       echo "  self-update: skipped (--no-update)" ;;
+esac
 
 # ---------- 2. claude location ----------
 CLAUDE_LINUX=""; CLAUDE_WIN=""; CLAUDE_LOC=none
@@ -699,6 +740,7 @@ else
   echo "  md: $MD"
   if [ "$ch_fail" -ne 0 ]; then
     warn "checks failed — fix the ❌ rows above and re-run. Gist not posted."
+    print_debug_bundle
     exit 1
   fi
   if [ "$NO_POST" = "1" ]; then
@@ -720,7 +762,10 @@ else
   fi
 fi
 
-# ---------- 9. recovery on proxy fail ----------
+# ---------- 9. debug bundle + recovery on any fail ----------
+if [ "$checks_pass" != "$checks_total" ] || [ "$CL_API" = "fail" ]; then
+  print_debug_bundle
+fi
 if [ "$CL_API" = "fail" ]; then
   echo
   say "Proxy/API failed — recovery options:"; hr
