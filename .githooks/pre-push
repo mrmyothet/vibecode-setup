@@ -1,23 +1,43 @@
 #!/usr/bin/env bash
-# Block the push if any tracked *.sh fails shellcheck (-S warning).
+# Pre-push guards:
+#   1. any tracked *.sh must pass shellcheck (-S warning)
+#   2. if doctor.sh changed vs origin/main, DOCTOR_VERSION must be bumped too
 # Enable in a fresh clone:  git config core.hooksPath .githooks
 # Override a single push:    git push --no-verify
 set -u
 
+fail=0
+
+# ---------- 1. shellcheck ----------
 if ! command -v shellcheck >/dev/null 2>&1; then
   echo "pre-push: shellcheck not installed — skipping check (get it: https://www.shellcheck.net)" >&2
-  exit 0
+else
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    shellcheck -S warning "$f" || fail=1
+  done < <(git ls-files '*.sh')
 fi
 
-fail=0
-while IFS= read -r f; do
-  [ -f "$f" ] || continue
-  shellcheck -S warning "$f" || fail=1
-done < <(git ls-files '*.sh')
+# ---------- 2. doctor.sh version bump ----------
+# DOCTOR_VERSION is the build stamp users + mentors see. If doctor.sh content
+# changed but the stamp did not, mentors cannot tell builds apart — block it.
+if [ -f doctor.sh ] && git rev-parse --verify -q origin/main >/dev/null; then
+  if ! git diff --quiet origin/main HEAD -- doctor.sh; then
+    old_ver=$(git show origin/main:doctor.sh 2>/dev/null | grep -m1 '^DOCTOR_VERSION=' | cut -d'"' -f2)
+    new_ver=$(git show HEAD:doctor.sh        2>/dev/null | grep -m1 '^DOCTOR_VERSION=' | cut -d'"' -f2)
+    if [ -n "$old_ver" ] && [ "$old_ver" = "$new_ver" ]; then
+      echo "" >&2
+      echo "pre-push BLOCKED: doctor.sh changed but DOCTOR_VERSION still '$new_ver'." >&2
+      echo "  Bump it (e.g. date or date+letter) so users/mentors can tell builds apart." >&2
+      echo "  Override: git push --no-verify" >&2
+      fail=1
+    fi
+  fi
+fi
 
 if [ "$fail" -ne 0 ]; then
   echo "" >&2
-  echo "pre-push BLOCKED: shellcheck warnings above. Fix them, or override with: git push --no-verify" >&2
+  echo "pre-push BLOCKED — fix the issues above, or override with: git push --no-verify" >&2
   exit 1
 fi
 exit 0
