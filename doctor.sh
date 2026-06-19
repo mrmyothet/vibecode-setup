@@ -26,6 +26,7 @@
 #   --keep|--replace   force conflict resolution (ch-0)
 #   --no-post          save report.md only, no gist post (ch-N)
 #   --no-update        skip self-update check
+#   --plain            no colors (auto when piped or NO_COLOR set) — clean paste
 #   --out DIR          output dir (default ~/.vibecode/doctor)
 #
 # Exit codes:
@@ -34,7 +35,7 @@
 set -u
 
 # version stamp — bump on every doctor.sh change (helps users + mentors debug which build is running)
-DOCTOR_VERSION="2026-06-19b"
+DOCTOR_VERSION="2026-06-19c"
 
 # ---------- 0. self-update ----------
 # doctor.sh updates itself from main so chapter checks can change mid-cohort.
@@ -72,7 +73,7 @@ fi
 # ---------- args ----------
 CHAPTER="ch-0"
 if [ $# -gt 0 ] && [[ "$1" =~ ^ch-[0-9]+$ ]]; then CHAPTER="$1"; shift; fi
-NONINT=0; KEEP=0; REPLACE=0; OUTDIR="${HOME}/.vibecode/doctor"; NO_POST=0
+NONINT=0; KEEP=0; REPLACE=0; OUTDIR="${HOME}/.vibecode/doctor"; NO_POST=0; PLAIN=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --non-interactive) NONINT=1 ;;
@@ -80,9 +81,10 @@ while [ $# -gt 0 ]; do
     --replace)         REPLACE=1 ;;
     --no-post)         NO_POST=1 ;;
     --no-update)       : ;;
+    --plain)           PLAIN=1 ;;
     --chapter)         CHAPTER="$2"; shift ;;
     --out)             OUTDIR="$2"; shift ;;
-    -h|--help)         sed -n '2,30p' "$0"; exit 0 ;;
+    -h|--help)         sed -n '2,31p' "$0"; exit 0 ;;
     *) echo "unknown flag: $1" >&2; exit 1 ;;
   esac
   shift
@@ -103,6 +105,10 @@ KEYFILE="${VIBE_KEYFILE:-vibe-key.env}"
 # ---------- ui ----------
 c_reset=$'\033[0m'; c_dim=$'\033[2m'
 c_ok=$'\033[32m'; c_warn=$'\033[33m'; c_err=$'\033[31m'; c_bold=$'\033[1m'
+# plain mode: explicit --plain, NO_COLOR env, or output not a terminal (piped/redirected)
+if [ "$PLAIN" = 1 ] || [ -n "${NO_COLOR:-}" ] || [ ! -t 1 ]; then
+  c_reset=""; c_dim=""; c_ok=""; c_warn=""; c_err=""; c_bold=""
+fi
 ok()   { printf '  %s✅%s %s\n' "$c_ok"   "$c_reset" "$*"; }
 warn() { printf '  %s⚠ %s%s\n'  "$c_warn" "$c_reset" "$*"; }
 fail() { printf '  %s❌%s %s\n' "$c_err"  "$c_reset" "$*"; }
@@ -118,7 +124,7 @@ print_debug_bundle() {
   echo "doctor $DOCTOR_VERSION | update:$DOCTOR_UPDATE_STATUS${REMOTE_VERSION:+ (main:$REMOTE_VERSION)} | $(date '+%F %T %Z')"
   echo "chapter:$CHAPTER platform:$PLATFORM claude:${CLAUDE_LOC:-?} user:${GH_USER:-none}"
   echo "checks: node:${NODE_R:-?} npm:${NPM_R:-?} py:${PY_R:-?} git:${GIT_R:-?} gh:${GH_R:-?} claude:${CL_R:-?}"
-  echo "auth: gh:${GH_AUTH:-?} proxy:${CL_API:-?}"
+  echo "net:${NET:-?} auth: gh:${GH_AUTH:-?} proxy:${CL_API:-?}"
   case "$CHAPTER" in
     ch-1) echo "ch1: profile:${CH1_PROFILE:-?} pr:${CH1_PR_STATE:-?}" ;;
     ch-2) echo "ch2: proposal:${CH2_PROPOSAL:-?}" ;;
@@ -249,6 +255,11 @@ fi
 
 # ---------- 5. proxy / claude api ----------
 say "Proxy / Claude API"; hr
+# connectivity pre-check — separates "no internet" from "proxy/key is wrong"
+NET=down
+if curl -fsS --max-time 6 -o /dev/null "$DOCTOR_URL" 2>/dev/null \
+   || curl -fsS --max-time 6 -o /dev/null https://github.com 2>/dev/null; then NET=up; fi
+[ "$NET" = up ] && ok "network: online" || warn "network: OFFLINE — auth checks will fail until you reconnect (wifi/VPN)"
 CL_API=fail; CL_REPLY=""; PROXY_HTTP=""
 # two auth paths: own Claude sub (claude -p) OR our proxy key (VIBE_PROXY+VIBE_KEY).
 # pass if EITHER works; the unused path is informational (⚠), not a failure.
@@ -264,10 +275,17 @@ if have claude; then
 fi
 # path B: our proxy key
 if [ -n "$VIBE_PROXY" ] && [ -n "$VIBE_KEY" ]; then
-  PROXY_HTTP=$(curl -s -o /tmp/doctor_api.json -w '%{http_code}' --max-time 30 \
+  # bearer goes in a 0600 --config file, never argv — keeps the key out of `ps`.
+  # response body discarded (-o /dev/null) so no world-readable /tmp file is left.
+  _api_cfg=$(mktemp 2>/dev/null || echo "/tmp/doctor-cfg.$$")
+  chmod 600 "$_api_cfg" 2>/dev/null || true
+  printf 'header = "Authorization: Bearer %s"\n' "$VIBE_KEY" > "$_api_cfg"
+  PROXY_HTTP=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
+    --config "$_api_cfg" \
     "${VIBE_PROXY%/}/v1/chat/completions" \
-    -H "Authorization: Bearer $VIBE_KEY" -H "Content-Type: application/json" \
+    -H "Content-Type: application/json" \
     -d '{"model":"mimo-v2.5","messages":[{"role":"user","content":"say ok"}],"max_tokens":5}' 2>/dev/null)
+  rm -f "$_api_cfg"
   if [ "$PROXY_HTTP" = "200" ]; then
     CL_PROXY=ok; CL_PROXY_MSG="HTTP 200"
   else
@@ -280,6 +298,7 @@ if [ "$CL_OWN" = "ok" ] || [ "$CL_PROXY" = "ok" ]; then
   if [ "$CL_OWN" = "ok" ]; then ok "own sub (claude -p): $CL_OWN_MSG"; else warn "own sub (claude -p): $CL_OWN_MSG"; fi
   if [ "$CL_PROXY" = "ok" ]; then ok "our key (proxy): $CL_PROXY_MSG"; else warn "our key (proxy): $CL_PROXY_MSG"; fi
 else
+  [ "$NET" = down ] && fail "ROOT CAUSE likely no internet — reconnect (wifi/VPN), then re-run"
   fail "own sub (claude -p): $CL_OWN_MSG"
   fail "our key (proxy): $CL_PROXY_MSG"
   fail "need ONE working — fix claude login OR set VIBE_PROXY+VIBE_KEY in $KEYFILE"
@@ -763,6 +782,9 @@ else
 fi
 
 # ---------- 9. debug bundle + recovery on any fail ----------
+echo
+say "Exit codes"; hr
+echo "  0 = all green    1 = hard fail (setup/homework incomplete)    2 = soft fail (proxy/API down)"
 if [ "$checks_pass" != "$checks_total" ] || [ "$CL_API" = "fail" ]; then
   print_debug_bundle
 fi
