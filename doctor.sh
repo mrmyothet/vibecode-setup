@@ -33,6 +33,9 @@
 
 set -u
 
+# version stamp — bump on every doctor.sh change (helps users + mentors debug which build is running)
+DOCTOR_VERSION="2026-06-19"
+
 # ---------- 0. self-update ----------
 # doctor.sh updates itself from main so chapter checks can change mid-cohort.
 # Skip with --no-update or DOCTOR_SKIP_UPDATE=1. Best-effort: offline = run as-is.
@@ -103,6 +106,8 @@ if [ "$(uname -s)" = "Darwin" ]; then PLATFORM=mac
 elif grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then PLATFORM=wsl
 fi
 say "Vibe Code Doctor — $CHAPTER"; hr
+echo "  version:  $DOCTOR_VERSION"
+echo "  run at:   $(date '+%Y-%m-%d %H:%M:%S %Z')"
 echo "  platform: $PLATFORM"
 
 # ---------- 2. claude location ----------
@@ -458,6 +463,7 @@ if [ "$CHAPTER" = "ch-3" ]; then
 fi
 cat > "$JSON" <<EOF
 {
+  "version": "$DOCTOR_VERSION",
   "ts": "$TS",
   "chapter": "$CHAPTER",
   "platform": "$PLATFORM",
