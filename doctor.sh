@@ -35,7 +35,7 @@
 set -u
 
 # version stamp — bump on every doctor.sh change (helps users + mentors debug which build is running)
-DOCTOR_VERSION="2026-06-19c"
+DOCTOR_VERSION="2026-06-20a"
 
 # ---------- 0. self-update ----------
 # doctor.sh updates itself from main so chapter checks can change mid-cohort.
@@ -443,14 +443,29 @@ if [ "$CHAPTER" = "ch-3" ]; then
         fi
         TREE=$(gh api "repos/$CH3_REPO/git/trees/HEAD?recursive=1" --jq '.tree[]|select(.type=="blob")|"\(.size)\t\(.path)"' 2>/dev/null || true)
         TREE_PATHS=$(printf '%s\n' "$TREE" | cut -f2-)
-        # mcp: present AND contains an mcpServers block (not an empty stub)
-        mcp_path=$(printf '%s\n' "$TREE_PATHS" | grep -iE '^\.mcp\.json$|^\.claude/settings[^/]*\.json$' | head -1 || true)
-        if [ -z "$mcp_path" ]; then
+        # mcp: ANY candidate (.mcp.json OR .claude/settings*.json) declares MCP —
+        # mcpServers (classic / plugin pluginConfigs), enabledPlugins (plugin-based MCP),
+        # or a bare .mcp.json with real server entries. Mirrors lib/ch3-checks.mjs.
+        mcp_paths=$(printf '%s\n' "$TREE_PATHS" | grep -iE '^\.mcp\.json$|^\.claude/settings[^/]*\.json$' || true)
+        if [ -z "$mcp_paths" ]; then
           fail "no .mcp.json (or .claude/settings*.json) in repo"
-        elif gh api "repos/$CH3_REPO/contents/$mcp_path" -H "Accept: application/vnd.github.raw" 2>/dev/null | grep -qiE 'mcp_?servers'; then
-          CH3_MCP=ok; ok "$mcp_path has an mcpServers block"
         else
-          fail "$mcp_path has no mcpServers entry (empty/stub config)"
+          mcp_found=""
+          while IFS= read -r mp; do
+            [ -z "$mp" ] && continue
+            body=$(gh api "repos/$CH3_REPO/contents/$mp" -H "Accept: application/vnd.github.raw" 2>/dev/null || true)
+            if printf '%s' "$body" | grep -qiE 'mcp_?servers|enabledplugins'; then mcp_found="$mp"; break; fi
+            case "$mp" in
+              .mcp.json|.MCP.json) printf '%s' "$body" | grep -qE '"(command|url|type)"[[:space:]]*:' && { mcp_found="$mp"; break; } ;;
+            esac
+          done <<EOF2
+$mcp_paths
+EOF2
+          if [ -n "$mcp_found" ]; then
+            CH3_MCP=ok; ok "$mcp_found declares MCP (mcpServers / enabledPlugins)"
+          else
+            fail "MCP file(s) present but no mcpServers / enabledPlugins / server entry"
+          fi
         fi
         # skill: present AND not a stub (size >= threshold)
         skill_sz=$(printf '%s\n' "$TREE" | awk -F'\t' 'tolower($2) ~ "^\\.claude/skills/[^/]+/skill\\.md$" {print $1; exit}')
