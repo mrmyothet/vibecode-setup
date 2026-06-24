@@ -38,7 +38,7 @@ is the value.
 
 ### Known cert ids
 `claude_101` · `claude_code_101` · `mcp_intro` · `agent_skills_intro` ·
-`subagents_intro` · `claude_code_in_action` · `building_claude_api` · `github_foundations`
+`subagents_intro` · `claude_code_in_action` · `building_claude_api`
 
 ---
 
@@ -62,18 +62,6 @@ certs:
 ### code / URL ဘယ်မှာ ရမလဲ?
 Skilljar certificate page → **Share / Verify** → `verify.skilljar.com/c/...`
 link ကို copy ။ အဲ့ link အပြည့် (သို့) နောက်ဆုံးက code ကို value အဖြစ် ထည့်ပါ။
-
----
-
-## Bonus certificates (free) 🎓
-
-Beyond Claude certs, earn these alongside the Tour and add them to your LinkedIn:
-
-- **Claude MCP** — *Introduction to Model Context Protocol* (Anthropic Skilljar, free, ties to Chapter 4). Full guide: **[mcp-certificate.md](mcp-certificate.md)** / [PDF](mcp-certificate.pdf)
-- **Git & GitHub** — GitHub Foundations + free courses (Codecademy, Alison, Great Learning…) + LinkedIn Learning paths. Full list: **[git-certifications.md](git-certifications.md)** / [PDF](git-certifications.pdf)
-
-> Bonus certificate အခမဲ့တွေ — Tour နဲ့အတူ ရယူပြီး LinkedIn မှာ ထည့်ပါ:
-> Claude MCP ([mcp-certificate.pdf](mcp-certificate.pdf)) နဲ့ Git/GitHub ([git-certifications.pdf](git-certifications.pdf)) handout တွေ ကြည့်ပါ။
 
 ---
 
