@@ -201,6 +201,9 @@ shareable artifacts into `~/.vibecode/doctor/`.
 curl -fsSL https://raw.githubusercontent.com/vibe-code-tours/vibecode-setup/main/doctor.sh -o doctor.sh
 bash doctor.sh           # chapter 0 (pre-class setup gate)
 bash doctor.sh ch-1      # chapter 1 (homework: profile repo + PR)
+bash doctor.sh ch-4      # chapter 4 (live/download URL, LICENSE, 3+ screenshots, intro slides)
+bash doctor.sh ch-5      # chapter 5 (a Skill + a Subagent, tech-stack slides, one feedback file)
+bash doctor.sh ch-6      # chapter 6 (closed issues, README, analytics, public deploy, screenshots)
 ```
 
 All chapters share five checks:
