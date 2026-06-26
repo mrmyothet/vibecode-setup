@@ -38,7 +38,7 @@
 set -u
 
 # version stamp — bump on every doctor.sh change (helps users + mentors debug which build is running)
-DOCTOR_VERSION="2026-06-23a"
+DOCTOR_VERSION="2026-06-26a"
 
 # ---------- 0. self-update ----------
 # doctor.sh updates itself from main so chapter checks can change mid-cohort.
@@ -194,26 +194,61 @@ if [ "$CHAPTER" = "ch-0" ] && [ "$CLAUDE_LOC" = "both" ]; then
   elif [ "$KEEP" = "1" ]; then CHOICE=keep
   else
     echo
-    echo "    [R] REPLACE — uninstall windows, install in WSL (recommended)"
+    echo "    [R] REPLACE — migrate to WSL (backup config, uninstall windows, install WSL) (recommended)"
     echo "    [K] KEEP    — leave windows, route proxy to Windows .claude/"
     echo "    [S] SKIP    — keep both, accept risk"
     printf "    pick [R/K/S] (default R): "
     read -r ans
     case "${ans:-R}" in r|R) CHOICE=replace ;; k|K) CHOICE=keep ;; *) CHOICE=skip ;; esac
   fi
+  # safety: REPLACE must reinstall claude in WSL — needs npm. If absent, downgrade to
+  # KEEP so we never uninstall windows claude and leave the student with nothing.
+  if [ "$CHOICE" = "replace" ] && ! have npm; then
+    warn "REPLACE needs npm in WSL to reinstall claude — none found; keeping windows install"
+    echo "      install node/npm in WSL, then re-run: doctor.sh ch-0 --replace"
+    CHOICE=keep
+  fi
   echo "    choice: $CHOICE"
   case "$CHOICE" in
     replace)
+      # Safe migration: backup config -> uninstall windows (clears config drift) ->
+      # install WSL claude -> verify. Order matters: WSL claude won't load config
+      # cleanly while the windows install is still present, so uninstall first.
+      _bk=""
+      if [ -d "$HOME/.claude" ]; then
+        _bk_dst="$HOME/.vibecode/backup/claude-config-$TS"
+        if mkdir -p "$_bk_dst" && cp -r "$HOME/.claude/." "$_bk_dst/" 2>/dev/null; then
+          ok "backed up ~/.claude -> $_bk_dst"; _bk="$_bk_dst"
+        else
+          warn "config backup failed (continuing)"
+        fi
+      fi
       echo "    uninstalling windows-native claude…"
       if have powershell.exe; then
-        powershell.exe -NoProfile -Command "npm uninstall -g @anthropic-ai/claude-code" 2>/dev/null || warn "uninstall returned non-zero"
+        powershell.exe -NoProfile -Command "npm uninstall -g @anthropic-ai/claude-code" 2>/dev/null || warn "windows uninstall returned non-zero"
       elif have cmd.exe; then
-        cmd.exe /c "npm uninstall -g @anthropic-ai/claude-code" 2>/dev/null || warn "uninstall returned non-zero"
+        cmd.exe /c "npm uninstall -g @anthropic-ai/claude-code" 2>/dev/null || warn "windows uninstall returned non-zero"
       else
-        warn "no powershell/cmd — uninstall windows claude manually:"
-        echo "      (in Windows) npm uninstall -g @anthropic-ai/claude-code"
+        warn "no powershell/cmd — uninstall windows claude manually: (in Windows) npm uninstall -g @anthropic-ai/claude-code"
       fi
-      CLAUDE_WIN=""; CLAUDE_LOC=linux ;;
+      echo "    installing claude in WSL (npm install -g @anthropic-ai/claude-code)…"
+      if npm install -g @anthropic-ai/claude-code >/dev/null 2>&1; then
+        hash -r 2>/dev/null || true
+        newbin="$(command -v claude 2>/dev/null)"
+        case "$newbin" in
+          ""|/mnt/c/*|*.cmd|*.exe)
+            CLAUDE_WIN=""; CLAUDE_LOC=none
+            warn "claude installed but not resolving to a WSL path yet — open a NEW shell and re-run doctor" ;;
+          *)
+            CLAUDE_LINUX="$newbin"; CLAUDE_WIN=""; CLAUDE_LOC=linux
+            ok "WSL claude installed: $CLAUDE_LINUX" ;;
+        esac
+      else
+        CLAUDE_WIN=""; CLAUDE_LOC=none
+        fail "WSL claude install FAILED after windows uninstall — no working claude right now"
+        echo "      recover: npm install -g @anthropic-ai/claude-code"
+        [ -n "${_bk:-}" ] && echo "      your config backup: $_bk"
+      fi ;;
     keep) ok "keeping windows claude (proxy config will target Windows .claude/)" ;;
     skip) warn "skip — both installs left in place" ;;
   esac
